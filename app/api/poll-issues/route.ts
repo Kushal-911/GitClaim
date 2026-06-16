@@ -5,20 +5,20 @@ import { GoogleGenAI } from '@google/genai';
 
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
+
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const TABLE_NAME = 'gitclaim-issues';
 
 export async function POST() {
   try {
-    // 1. Scan DynamoDB to retrieve all watchlisted repositories
     const scanResponse = await docClient.send(new ScanCommand({ TableName: TABLE_NAME }));
     const items = scanResponse.Items || [];
     
-    // Extract registered watchlists. Default to meshery/meshery if the watchlist is empty
     let activeTargets = items
       .filter(item => item.status === 'WATCHLIST_ITEM')
       .map(item => item.repoFullName);
 
+    // Default target fallback if watchlist manager is empty
     if (activeTargets.length === 0) {
       activeTargets = ['meshery/meshery'];
     }
@@ -26,7 +26,7 @@ export async function POST() {
     const crawlerSummary = [];
 
     for (const repo of activeTargets) {
-      const githubUrl = `https://api.github.com/search/issues?q=repo:${repo}+is:issue+is:open+no:assignee&sort=created&order=desc&per_page=4`;
+      const githubUrl = `https://api.github.com/search/issues?q=repo:${repo}+is:issue+is:open+no:assignee&sort=created&order=desc&per_page=5`;
       
       const ghResponse = await fetch(githubUrl, {
         headers: {
@@ -38,7 +38,7 @@ export async function POST() {
       });
 
       if (!ghResponse.ok) {
-        console.warn(`Failed to poll GitHub for repository: ${repo}`);
+        console.warn(`Failed to poll GitHub repository: ${repo}`);
         continue;
       }
 
@@ -48,43 +48,63 @@ export async function POST() {
       for (const issue of rawIssues) {
         const issueId = String(issue.id);
 
-        // Deduplication Check
+        // Deduplication & Self-Healing Check
         const checkExisting = await docClient.send(new GetCommand({
           TableName: TABLE_NAME,
           Key: { issueId }
         }));
 
-        if (checkExisting.Item) {
-          continue; // Already processed, skip
+        // SELF-HEALING RULE: Skip ONLY if we have already posted a live claim comment.
+        // This allows us to re-evaluate previously ignored/failed tasks when updating AI engine rules!
+        if (checkExisting.Item && checkExisting.Item.status === 'AUTOMATICALLY_CLAIMED') {
+          continue;
         }
 
-        // Gemini Prompt Engineering
-        const prompt = `You are an open-source developer looking to claim an issue.
-        Task 1: Classify this issue title into exactly one of these categories: "UI/UX", "Server", "CLI", "Security", "Documentation", or "Other".
-        Task 2: Determine suitability ("isGoodMatch" is true ONLY for UI/UX, Server, or CLI).
-        Task 3: Draft a brief, 2-sentence comment claiming the issue. It MUST sound like a passionate, friendly human developer. Never mention automated bots, algorithms, or platforms. Do not use generic placeholders.
+        const prompt = `You are a professional software engineer looking to contribute to an open-source project.
+        Analyze the following GitHub issue title and perform the tasks:
 
         Issue Title: "${issue.title}"
         
-        Return as a raw JSON object matching this structure:
-        {
-          "category": "string",
-          "isGoodMatch": boolean,
-          "proposal": "string"
-        }`;
+        Task 1: Classify this issue title into exactly one of these categories: "UI/UX", "Server", "CLI", "Security", "Documentation", or "Other".
+        - "UI/UX" for frontend changes, CSS, React, UI elements, layouts, or state hooks.
+        - "Server" for backend changes, databases, API schemas, validation, backend architecture, Go, or Python.
+        - "CLI" for command-line tools (e.g. mesheryctl, flags, config commands).
+        - "Security" for authorization, credentials, leaks.
+        - "Documentation" for markdown files, guides, tutorials.
+
+        Task 2: Determine if this is a good match for your skills. Set "isGoodMatch" to true ONLY if the category is "UI/UX", "Server", or "CLI". Otherwise set it to false.
+
+        Task 3: Draft a brief, professional, and genuinely human-sounding 2-sentence comment offering to resolve this issue.
+        - DO NOT use generic robotic phrases (e.g., "Hello, I am a bot", "GitClaim here", "Ready to assist").
+        - Make it sound like a passionate human contributor who understands the problem. Refer to specific files or components mentioned in the title (like RJSF_wrapper.tsx or useNotification).
+        - Ask politely to be assigned to the task.`;
 
         let aiAnalysis = { category: 'Other', isGoodMatch: false, proposal: '' };
+
         try {
           const aiResponse = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: { responseMimeType: 'application/json' }
+            config: {
+              responseMimeType: 'application/json',
+              // Strict schema configuration prevents validation mismatch errors
+              responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                  category: { type: 'STRING' },
+                  isGoodMatch: { type: 'BOOLEAN' },
+                  proposal: { type: 'STRING' }
+                },
+                required: ['category', 'isGoodMatch', 'proposal']
+              }
+            }
           });
+
           if (aiResponse.text) {
             aiAnalysis = JSON.parse(aiResponse.text.trim());
           }
-        } catch (aiErr) {
-          console.error(`Gemini evaluation failed for issue: ${issueId}`, aiErr);
+        } catch (aiError) {
+          console.error(`Gemini SDK evaluation failed for issue: ${issueId}`, aiError);
         }
 
         let runStatus = 'IGNORED_DOMAIN';
