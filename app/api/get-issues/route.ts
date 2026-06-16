@@ -2,24 +2,26 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-// Initialize AWS DynamoDB Server-side
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
+const TABLE_NAME = 'gitclaim-issues';
 
 export async function GET() {
   try {
     const response = await docClient.send(new ScanCommand({
-      TableName: 'gitclaim-issues'
+      TableName: TABLE_NAME
     }));
 
-    // Sort issues by latest creation date
-    const sortedIssues = (response.Items || []).sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const items = response.Items || [];
 
-    // Return response with caching disabled for live-data freshness
+    // Separate Watchlists from Issues in Javascript memory (Zero complex index requirements)
+    const watchlist = items.filter(i => i.status === 'WATCHLIST_ITEM');
+    const issues = items
+      .filter(i => i.status !== 'WATCHLIST_ITEM')
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     return NextResponse.json(
-      { issues: sortedIssues },
+      { issues, watchlist },
       {
         status: 200,
         headers: {
@@ -30,7 +32,7 @@ export async function GET() {
   } catch (error: any) {
     console.error("DynamoDB Scan Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch issues from database", details: error.message },
+      { error: "Failed to fetch data from database", details: error.message },
       { status: 500 }
     );
   }
