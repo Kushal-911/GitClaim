@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Link from "next/link";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +28,28 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <header className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 border-b border-gray-200">
+          <div className=" mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between text-gray-900 h-16">
+              <h1 className="text-2xl font-bold text-gray-900 hover:text-gray-700">IntBee</h1>
+              <div className="flex space-x-6">
+
+              <Link href="/about">About Us</Link>
+              <Link href="/gallery"> Gallery </Link>
+              <Link href="/contact"> Contact </Link>    
+              </div>       
+            </div>
+          </div>
+        </header>
+        
+
+        {children}
+
+        <footer>
+          <div className="flex flex-col items-center justify-center py-4 h-16 bg-amber-400"></div>
+        </footer>
+        </body>
     </html>
   );
 }
