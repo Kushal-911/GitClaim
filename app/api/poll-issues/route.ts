@@ -20,7 +20,7 @@ export async function POST() {
 
     // Default target fallback if watchlist manager is empty
     if (activeTargets.length === 0) {
-      activeTargets = ['meshery/meshery'];
+      activeTargets = ['Kushal-911/macro-sentry-AI'];
     }
 
     const crawlerSummary = [];
@@ -47,36 +47,55 @@ export async function POST() {
 
       for (const issue of rawIssues) {
         const issueId = String(issue.id);
+        const title = issue.title;
 
-        // Deduplication & Self-Healing Check
         const checkExisting = await docClient.send(new GetCommand({
           TableName: TABLE_NAME,
           Key: { issueId }
         }));
 
-        // SELF-HEALING RULE: Skip ONLY if we have already posted a live claim comment.
-        // This allows us to re-evaluate previously ignored/failed tasks when updating AI engine rules!
+        // SELF-HEALING: Only skip if we have already successfully posted a live claim comment.
         if (checkExisting.Item && checkExisting.Item.status === 'AUTOMATICALLY_CLAIMED') {
           continue;
+        }
+
+        const upperTitle = title.toUpperCase();
+        let finalCategory = 'Other';
+        let isGoodMatch = false;
+        let heuristicApplied = false;
+
+        if (upperTitle.includes('[UI]') || upperTitle.includes('UI/UX') || upperTitle.includes('FRONTEND') || upperTitle.includes('REACT') || upperTitle.includes('CSS')) {
+          finalCategory = 'UI/UX';
+          isGoodMatch = true;
+          heuristicApplied = true;
+        } else if (upperTitle.includes('[SERVER]') || upperTitle.includes('BACKEND') || upperTitle.includes('DATABASE') || upperTitle.includes('API') || upperTitle.includes('SCHEMA')) {
+          finalCategory = 'Server';
+          isGoodMatch = true;
+          heuristicApplied = true;
+        } else if (upperTitle.includes('[CLI]') || upperTitle.includes('[MESHERYCTL]') || upperTitle.includes('COMMAND LINE')) {
+          finalCategory = 'CLI';
+          isGoodMatch = true;
+          heuristicApplied = true;
+        } else if (upperTitle.includes('[SECURITY]') || upperTitle.includes('SECRET') || upperTitle.includes('AUTH')) {
+          finalCategory = 'Security';
+          isGoodMatch = false;
+          heuristicApplied = true;
+        } else if (upperTitle.includes('[DOCS]') || upperTitle.includes('DOCUMENTATION') || upperTitle.includes('README.MD')) {
+          finalCategory = 'Documentation';
+          isGoodMatch = false;
+          heuristicApplied = true;
         }
 
         const prompt = `You are a professional software engineer looking to contribute to an open-source project.
         Analyze the following GitHub issue title and perform the tasks:
 
-        Issue Title: "${issue.title}"
+        Issue Title: "${title}"
         
         Task 1: Classify this issue title into exactly one of these categories: "UI/UX", "Server", "CLI", "Security", "Documentation", or "Other".
-        - "UI/UX" for frontend changes, CSS, React, UI elements, layouts, or state hooks.
-        - "Server" for backend changes, databases, API schemas, validation, backend architecture, Go, or Python.
-        - "CLI" for command-line tools (e.g. mesheryctl, flags, config commands).
-        - "Security" for authorization, credentials, leaks.
-        - "Documentation" for markdown files, guides, tutorials.
-
         Task 2: Determine if this is a good match for your skills. Set "isGoodMatch" to true ONLY if the category is "UI/UX", "Server", or "CLI". Otherwise set it to false.
-
         Task 3: Draft a brief, professional, and genuinely human-sounding 2-sentence comment offering to resolve this issue.
-        - DO NOT use generic robotic phrases (e.g., "Hello, I am a bot", "GitClaim here", "Ready to assist").
-        - Make it sound like a passionate human contributor who understands the problem. Refer to specific files or components mentioned in the title (like RJSF_wrapper.tsx or useNotification).
+        - DO NOT use generic robotic phrases.
+        - Make it sound like a passionate human contributor who understands the problem. Refer to specific files or components mentioned in the title.
         - Ask politely to be assigned to the task.`;
 
         let aiAnalysis = { category: 'Other', isGoodMatch: false, proposal: '' };
@@ -87,11 +106,13 @@ export async function POST() {
             contents: prompt,
             config: {
               responseMimeType: 'application/json',
-              // Strict schema configuration prevents validation mismatch errors
               responseSchema: {
                 type: 'OBJECT',
                 properties: {
-                  category: { type: 'STRING' },
+                  category: { 
+                    type: 'STRING',
+                    enum: ["UI/UX", "Server", "CLI", "Security", "Documentation", "Other"]
+                  },
                   isGoodMatch: { type: 'BOOLEAN' },
                   proposal: { type: 'STRING' }
                 },
@@ -104,7 +125,18 @@ export async function POST() {
             aiAnalysis = JSON.parse(aiResponse.text.trim());
           }
         } catch (aiError) {
-          console.error(`Gemini SDK evaluation failed for issue: ${issueId}`, aiError);
+          console.error(`Gemini SDK processing failed for issue: ${issueId}. Falling back to heuristic defaults.`, aiError);
+        }
+
+        // Blend Heuristics with AI: If heuristics successfully matched, lock them in.
+        if (heuristicApplied) {
+          aiAnalysis.category = finalCategory;
+          aiAnalysis.isGoodMatch = isGoodMatch;
+        }
+
+        // Default proposal fallback
+        if (!aiAnalysis.proposal) {
+          aiAnalysis.proposal = `Hi team! I noticed this issue regarding the ${aiAnalysis.category} category. I am highly interested in working on this and would love to help resolve it.`;
         }
 
         let runStatus = 'IGNORED_DOMAIN';
@@ -138,11 +170,11 @@ export async function POST() {
           issueId,
           repoFullName: repo,
           issueNumber: issue.number,
-          title: issue.title,
+          title,
           status: runStatus,
           category: aiAnalysis.category,
           isGoodMatch: aiAnalysis.isGoodMatch,
-          aiProposal: postedCommentText || aiAnalysis.proposal || 'Skipped',
+          aiProposal: postedCommentText || aiAnalysis.proposal,
           createdAt: issue.created_at,
           url: issue.html_url
         };
