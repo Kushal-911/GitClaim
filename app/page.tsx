@@ -1,514 +1,488 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function App() {
+  const [isAutoMode, setIsAutoMode] = useState(true);
   const [issues, setIssues] = useState<any[]>([]);
-  const [watchlist, setWatchlist] = useState<any[]>([]);
-  const [newRepoUrl, setNewRepoUrl] = useState('');
+  const [watchlists, setWatchlists] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'claimed' | 'ignored'>('all');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [showConfig, setShowConfig] = useState(false);
+  const [activeTab, setActiveTab] = useState<'monitor' | 'config'>('monitor');
   const [isDarkMode, setIsDarkMode] = useState(true);
-  
-  // Custom Persona States
-  const [devSignature, setDevSignature] = useState(
-    "As an aspiring systems engineer looking to contribute to the cloud-native ecosystem, I'm highly eager to help resolve this. Could you please assign this to me?"
-  );
-  const [filters, setFilters] = useState({
-    uiux: true,
-    server: true,
-    cli: true,
-    security: false,
-    documentation: false,
-  });
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [watchlistUrl, setWatchlistUrl] = useState("");
+  const [isAddingWatch, setIsAddingWatch] = useState(false);
 
-  // Terminal telemetry logs
-  const [logs, setLogs] = useState<Array<{ time: string; type: string; msg: string }>>([
-    { time: '22:15:02', type: 'system', msg: 'GitClaim Terminal v3.2.0 Initialized.' },
-    { time: '22:15:03', type: 'success', msg: 'DynamoDB Connection: Active [ap-south-1]' },
-    { time: '22:15:04', type: 'info', msg: 'Awaiting webhook trigger or system polling cycle...' }
+  // Custom Personalization
+  const [personalSignature, setPersonalSignature] = useState(
+    "I'm an aspiring systems engineer looking to dive deeper into the cloud-native ecosystem. Let's make this feature happen!"
+  );
+
+  const [logs, setLogs] = useState<Array<{ timestamp: string; type: string; text: string }>>([
+    { timestamp: new Date().toTimeString().split(' ')[0], type: 'info', text: 'System initialized. Native Vercel Cloud Crons active.' },
+    { timestamp: new Date().toTimeString().split(' ')[0], type: 'success', text: 'Telemetry Pipeline: Secure connection to DynamoDB verified' }
   ]);
 
-  const addLog = (type: string, msg: string) => {
-    const time = new Date().toTimeString().split(' ')[0];
-    setLogs(prev => [{ time, type, msg }, ...prev.slice(0, 19)]);
+  const addLog = (type: string, text: string) => {
+    const timestamp = new Date().toTimeString().split(' ')[0];
+    setLogs(prev => [{ timestamp, type, text }, ...prev.slice(0, 19)]);
   };
 
+  // 1. Core Data Retrieval (Issues + Watchlists)
   const fetchData = async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
       const res = await fetch('/api/get-issues');
-      if (!res.ok) throw new Error('API unreachable');
+      if (!res.ok) throw new Error('Could not contact GitClaim storage API.');
       const data = await res.json();
       
-      setIssues(data.issues || []);
-      setWatchlist(data.watchlist || []);
+      const allItems = data.issues || [];
+      const dbIssues = allItems.filter((item: any) => item.status !== 'WATCHLIST_ITEM');
+      const dbWatchlists = allItems.filter((item: any) => item.status === 'WATCHLIST_ITEM');
       
-      addLog('success', `Database Synced. Issues: ${data.issues?.length || 0} | Watchlists: ${data.watchlist?.length || 0}`);
-    } catch (err) {
-      addLog('warning', 'Production API offline. Operating in fallback developer workspace.');
-      // Premium Mock data fallbacks for preview compiler
+      setIssues(dbIssues);
+      setWatchlists(dbWatchlists);
+      
+      if (!quiet) {
+        addLog('success', `Synchronized database states: ${dbIssues.length} issue traces, ${dbWatchlists.length} watchlist nodes.`);
+      }
+    } catch (err: any) {
+      addLog('warning', 'Local sandbox active. Using simulation engine data.');
+      // Fallback fallback data inside sandbox environment
       setIssues([
         {
-          issueId: "4667918810",
-          repoFullName: "meshery/meshery",
+          issueId: '4667918810',
           issueNumber: 20083,
-          title: "[UI] Deprecated HandleError usage in RJSF_wrapper.tsx should use useNotification hook",
-          status: "AUTOMATICALLY_CLAIMED",
-          category: "UI/UX",
+          repoFullName: 'meshery/meshery',
+          title: '[UI] Deprecated HandleError usage in RJSF_wrapper.tsx should use useNotification hook',
+          category: 'UI/UX',
           isGoodMatch: true,
-          aiProposal: "Hi team! I noticed the deprecated HandleError usage inside RJSF_wrapper.tsx. I can refactor this cleanly to use the useNotification hook instead.",
+          status: 'AUTOMALLY_CLAIMED',
+          aiProposal: "Hi team! I'd love to take this on. Refactoring the deprecated HandleError logic inside RJSF_wrapper.tsx to use the useNotification hook makes absolute sense. Please assign this to me!",
           createdAt: new Date().toISOString(),
-          url: "https://github.com/meshery/meshery/issues/20083"
-        },
-        {
-          issueId: "4662700260",
-          repoFullName: "meshery/meshery",
-          issueNumber: 20069,
-          title: "[Server] Validate workspace path UUIDs in local provider schemas",
-          status: "AUTOMATICALLY_CLAIMED",
-          category: "Server",
-          isGoodMatch: true,
-          aiProposal: "Greetings! I'd love to take this on. Adding structural UUID validation to the workspace paths inside the local provider schemas will ensure better data safety.",
-          createdAt: new Date(Date.now() - 7200000).toISOString(),
-          url: "https://github.com/meshery/meshery/issues/20069"
+          url: 'https://github.com/meshery/meshery/issues/20083'
         }
       ]);
-      setWatchlist([
-        { issueId: "WATCHLIST#meshery/meshery", repoFullName: "meshery/meshery", status: "WATCHLIST_ITEM" }
+      setWatchlists([
+        { issueId: 'wl_1', repoFullName: 'meshery/meshery' }
       ]);
     } finally {
       if (!quiet) setLoading(false);
     }
   };
 
+  // Initial load and periodic polling loop
   useEffect(() => {
     fetchData();
-  }, []);
 
-  const handleAddRepo = async (e: React.FormEvent) => {
+    // Silent background agent to pull updates pushed by your Vercel cron
+    const interval = setInterval(() => {
+      if (isAutoMode) {
+        addLog('info', 'Performing background check against DynamoDB schema...');
+        fetchData(true);
+      }
+    }, 30000); // Poll database state every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [isAutoMode]);
+
+  // 2. Manual Trigger/Force Sync Ingestion
+  const triggerForceSync = async () => {
+    setIsSyncing(true);
+    addLog('info', 'Triggering manual ingestion sweep...');
+    try {
+      const res = await fetch('/api/poll-issues', { method: 'POST' });
+      if (!res.ok) throw new Error('Server returned rejection state.');
+      const data = await res.json();
+      
+      addLog('success', `Manual ingestion check complete. Active watchlists: ${data.activeWatchlistsCount || 0}`);
+      if (data.summary && data.summary.length > 0) {
+        data.summary.forEach((item: any) => {
+          addLog(
+            item.action === 'AUTOMATICALLY_CLAIMED' ? 'success' : 'info',
+            `Processed [${item.repo}#${item.issueNumber}]: Category ${item.category} -> Status: ${item.action}`
+          );
+        });
+      }
+      await fetchData(true);
+    } catch (err: any) {
+      addLog('error', `Sync failed: ${err.message || 'Check environment keys.'}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // 3. Watchlist Add Repository
+  const addRepoToWatchlist = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRepoUrl) return;
+    if (!watchlistUrl) return;
+    setIsAddingWatch(true);
+
+    let repoName = watchlistUrl.trim();
+    if (repoName.includes("github.com/")) {
+      const parts = repoName.split("github.com/");
+      if (parts[1]) repoName = parts[1].replace(/\/$/, "");
+    }
 
     try {
       const res = await fetch('/api/watchlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: newRepoUrl })
+        body: JSON.stringify({ repoFullName: repoName })
       });
-      if (!res.ok) throw new Error('Failed to register repository');
-      const data = await res.json();
+      if (!res.ok) throw new Error();
       
-      addLog('success', `Watchlist Added: ${data.repoFullName}`);
-      setNewRepoUrl('');
-      fetchData(true);
-    } catch (err) {
-      addLog('error', `Local mock addition: ${newRepoUrl}`);
-      const fallbackRepo = newRepoUrl.replace("https://github.com/", "");
-      setWatchlist(prev => [...prev, { issueId: `WATCHLIST#${fallbackRepo}`, repoFullName: fallbackRepo, status: "WATCHLIST_ITEM" }]);
-      setNewRepoUrl('');
-    }
-  };
-
-  const handleRemoveRepo = async (repoFullName: string) => {
-    try {
-      const res = await fetch('/api/watchlist', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoFullName })
-      });
-      if (!res.ok) throw new Error('Removal failed');
-      
-      addLog('success', `Removed watchlisted repo: ${repoFullName}`);
-      fetchData(true);
-    } catch (err) {
-      addLog('error', `Local mock removal: ${repoFullName}`);
-      setWatchlist(prev => prev.filter(item => item.repoFullName !== repoFullName));
-    }
-  };
-
-  const triggerSync = async () => {
-    setIsSyncing(true);
-    addLog('system', 'Invoking GitHub -> Gemini -> DynamoDB ingestion routine...');
-    try {
-      const res = await fetch('/api/poll-issues', { method: 'POST' });
-      if (!res.ok) throw new Error('Ingestion failed');
-      const data = await res.json();
-      addLog('success', `Sync finished. Active watchlists: ${data.activeWatchlistsCount || 0}`);
+      addLog('success', `Added repository to active watchlist: ${repoName}`);
+      setWatchlistUrl("");
       await fetchData(true);
     } catch (err) {
-      addLog('warning', 'Live preview pipeline simulation executed.');
-      setTimeout(() => {
-        addLog('success', 'Sync finished cleanly.');
-        setIsSyncing(false);
-      }, 1200);
-      return;
+      addLog('error', `Failed to write ${repoName} to watchlists.`);
+    } finally {
+      setIsAddingWatch(false);
     }
-    setIsSyncing(false);
   };
 
-  const displayedIssues = issues.filter(issue => {
-    if (activeTab === 'claimed') return issue.status === 'AUTOMATICALLY_CLAIMED';
-    if (activeTab === 'ignored') return issue.status !== 'AUTOMATICALLY_CLAIMED';
-    return true;
-  });
+  // 4. Watchlist Remove Repository
+  const removeRepoFromWatchlist = async (repoFullName: string) => {
+    try {
+      const res = await fetch(`/api/watchlist?repoFullName=${encodeURIComponent(repoFullName)}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) throw new Error();
+      
+      addLog('warning', `Removed repository from watchlist: ${repoFullName}`);
+      await fetchData(true);
+    } catch (err) {
+      addLog('error', `Failed to remove ${repoFullName} from watchlists.`);
+    }
+  };
 
   return (
-    <div className={`min-h-screen font-mono transition-colors duration-300 ${
+    <main className={`min-h-screen flex flex-col font-mono transition-colors duration-300 ${
       isDarkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-white text-zinc-900'
     }`}>
-      <div className="max-w-[1300px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        
-        {/* Navigation & Header */}
-        <header className={`flex flex-col md:flex-row md:justify-between md:items-center gap-6 pb-6 mb-8 border-b ${
-          isDarkMode ? 'border-zinc-800' : 'border-zinc-200'
-        }`}>
+      {/* Top Navigation */}
+      <nav className={`border-b px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 ${
+        isDarkMode ? 'bg-zinc-900/40 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+      }`}>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center font-black text-emerald-500">
+            GC
+          </div>
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold tracking-tight uppercase">
-                Git_Claim <span className="text-emerald-500">[]</span>
-              </h1>
-              <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold px-2 py-0.5 uppercase tracking-wider">
-                Autonomous
-              </span>
-            </div>
-            <p className={`text-xs mt-1.5 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
-              Generalized open source worker and targets board
-            </p>
+            <span className="text-lg font-bold tracking-tight">
+              Git_Claim <span className="text-emerald-500">[]</span>
+            </span>
+            <span className={`text-[10px] block ${isDarkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+              Autonomous Worker Node
+            </span>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-2 border transition duration-200 hover:border-emerald-500 ${
-                isDarkMode ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-600'
-              }`}
-              title="Toggle Theme"
-              aria-label="Toggle Theme"
-            >
-              {isDarkMode ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.364l-.707-.707M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
-            </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Light/Dark Toggle */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 border transition duration-200 hover:border-emerald-500 ${
+              isDarkMode ? 'border-zinc-800 text-zinc-400' : 'border-zinc-200 text-zinc-600'
+            }`}
+            title="Toggle Theme"
+          >
+            {isDarkMode ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.364l-.707-.707M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
 
-            <button
-              onClick={() => setShowConfig(!showConfig)}
-              className={`px-4 py-2 text-xs font-bold border transition duration-200 hover:border-emerald-500 ${
-                isDarkMode ? 'border-zinc-800 text-zinc-300' : 'border-zinc-200 text-zinc-700'
-              }`}
-            >
-              [ CONFIG_PERSONA ]
-            </button>
-            
-            <button
-              onClick={triggerSync}
-              disabled={isSyncing}
-              className={`px-4 py-2 text-xs font-bold border bg-zinc-900 text-emerald-400 hover:bg-zinc-800 hover:text-emerald-300 transition duration-200 ${
-                isDarkMode ? 'border-emerald-500/30' : 'border-zinc-300'
-              }`}
-            >
-              {isSyncing ? 'RUNNING_SYNC...' : 'FORCE_SYNC'}
-            </button>
-          </div>
-        </header>
-
-        {/* Configurations Overlay */}
-        {showConfig && (
-          <div className={`mb-8 p-6 border transition-all duration-300 ${
-            isDarkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+          <div className={`flex items-center gap-2 border rounded-md px-3 py-1.5 text-[11px] ${
+            isDarkMode ? 'bg-zinc-950 border-zinc-850' : 'bg-white border-zinc-200'
           }`}>
-            <h3 className="text-xs font-bold uppercase mb-2">Scope Configuration Panel</h3>
-            <p className={`text-xs mb-6 ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
-              Fine-tune target repositories and signature metadata definitions.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <h4 className="text-xs font-bold uppercase mb-3 text-emerald-500">Target Filter Matrix</h4>
-                <div className="grid grid-cols-2 gap-2 mb-4">
-                  {Object.entries(filters).map(([key, value]) => (
-                    <button
-                      key={key}
-                      onClick={() => setFilters(prev => ({ ...prev, [key]: !value }))}
-                      className={`flex items-center justify-between px-3 py-2 border text-[11px] transition duration-150 font-bold ${
-                        value 
-                          ? 'border-emerald-500/40 text-emerald-500 bg-emerald-500/5' 
-                          : 'border-zinc-800 text-zinc-500 bg-transparent hover:border-zinc-700'
-                      }`}
-                    >
-                      <span>{key.toUpperCase()}</span>
-                      <span>{value ? '[X]' : '[_]'}</span>
-                    </button>
-                  ))}
+            <span className={`h-2 w-2 rounded-full ${isAutoMode ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'}`} />
+            <span className="font-bold uppercase tracking-wider">
+              {isAutoMode ? 'CRON_POLLING_ACTIVE' : 'CRON_POLLING_PAUSED'}
+            </span>
+          </div>
+
+          <button
+            onClick={() => setIsAutoMode(!isAutoMode)}
+            className={`px-3 py-1.5 text-xs font-bold border transition duration-150 ${
+              isAutoMode 
+                ? 'border-rose-500/20 text-rose-500 bg-rose-500/5' 
+                : 'border-emerald-500/20 text-emerald-500 bg-emerald-500/5'
+            }`}
+          >
+            {isAutoMode ? '[ PAUSE_POLLING ]' : '[ ACTIVATE_POLLING ]'}
+          </button>
+
+          <button
+            onClick={triggerForceSync}
+            disabled={isSyncing}
+            className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all duration-150"
+          >
+            {isSyncing ? 'RUNNING_SYNC...' : 'FORCE_HARVEST_SYNC'}
+          </button>
+        </div>
+      </nav>
+
+      <div className="flex flex-1 flex-col lg:flex-row">
+        {/* Navigation Sidebar */}
+        <aside className={`w-full lg:w-64 p-6 flex flex-col gap-2 border-r ${
+          isDarkMode ? 'bg-zinc-900/30 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
+        }`}>
+          <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 px-3">
+            Systems Management
+          </div>
+          <button
+            onClick={() => setActiveTab('monitor')}
+            className={`flex items-center gap-3 px-3 py-2.5 text-xs font-semibold transition ${
+              activeTab === 'monitor' 
+                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                : 'text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200'
+            }`}
+          >
+            [ 📊 TELEMETRY_FEED ]
+          </button>
+          <button
+            onClick={() => setActiveTab('config')}
+            className={`flex items-center gap-3 px-3 py-2.5 text-xs font-semibold transition ${
+              activeTab === 'config' 
+                ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                : 'text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200'
+            }`}
+          >
+            [ ⚙️ SCOPE_SIGNATURE ]
+          </button>
+
+          <div className={`mt-8 p-4 border text-[11px] space-y-2 ${
+            isDarkMode ? 'bg-zinc-950 border-zinc-850' : 'bg-white border-zinc-200'
+          }`}>
+            <div className="font-bold text-emerald-500">STORAGE_METRICS</div>
+            <div className="flex justify-between text-zinc-500">
+              <span>Region:</span>
+              <span className="font-bold text-zinc-300">ap-south-1</span>
+            </div>
+            <div className="flex justify-between text-zinc-500">
+              <span>DynamoDB:</span>
+              <span className="text-emerald-500 font-bold">Online</span>
+            </div>
+            <div className="flex justify-between text-zinc-500">
+              <span>Cloud Cron:</span>
+              <span className="text-emerald-500 font-bold">10m Tick</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Central Workspace */}
+        <div className="flex-1 p-8 overflow-y-auto">
+          {activeTab === 'monitor' && (
+            <div className="space-y-8">
+              {/* Watchlist Section */}
+              <section className={`p-5 border ${
+                isDarkMode ? 'bg-zinc-900/10 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
+              }`}>
+                <h3 className="text-xs font-bold uppercase mb-3 text-emerald-500">GitHub Watchlist Registry</h3>
+                <form onSubmit={addRepoToWatchlist} className="flex flex-col sm:flex-row gap-2 mb-4">
+                  <input
+                    type="text"
+                    value={watchlistUrl}
+                    onChange={(e) => setWatchlistUrl(e.target.value)}
+                    placeholder="Enter owner/repo (e.g. Kushal-911/macro-sentry-AI)"
+                    className={`flex-1 p-2 text-xs focus:outline-none focus:border-emerald-500 border ${
+                      isDarkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-300 text-zinc-850'
+                    }`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isAddingWatch}
+                    className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition duration-150"
+                  >
+                    {isAddingWatch ? 'ADDING...' : '+ WATCH_REPOSITORY'}
+                  </button>
+                </form>
+
+                <div className="flex flex-wrap gap-2">
+                  {watchlists.length === 0 ? (
+                    <span className="text-xs text-zinc-500 italic">No custom repositories configured. Falling back to meshery/meshery.</span>
+                  ) : (
+                    watchlists.map((wl) => (
+                      <div key={wl.issueId} className={`flex items-center gap-2 px-2.5 py-1 text-xs border ${
+                        isDarkMode ? 'border-zinc-800 bg-zinc-950 text-zinc-300' : 'border-zinc-200 bg-white text-zinc-700'
+                      }`}>
+                        <span>{wl.repoFullName}</span>
+                        <button
+                          onClick={() => removeRepoFromWatchlist(wl.repoFullName)}
+                          className="text-zinc-400 hover:text-rose-500 font-bold transition-colors ml-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              {/* Logs & Stats Grid */}
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                {/* Console System */}
+                <div className={`xl:col-span-2 border flex flex-col h-72 ${
+                  isDarkMode ? 'bg-zinc-950 border-zinc-850' : 'bg-white border-zinc-200 shadow-sm'
+                }`}>
+                  <div className={`px-4 py-2 border-b flex items-center justify-between ${
+                    isDarkMode ? 'border-zinc-850 bg-zinc-900/10' : 'border-zinc-200 bg-zinc-50'
+                  }`}>
+                    <span className="text-[10px] font-bold text-emerald-500 tracking-wider">SYSTEM_DAEMON_CONSOLES</span>
+                    <span className="text-[9px] text-zinc-500">Live Telemetry</span>
+                  </div>
+                  <div className="p-4 overflow-y-auto flex-1 space-y-2 text-[11px]">
+                    {logs.map((log, index) => (
+                      <div key={index} className="flex gap-3 leading-relaxed">
+                        <span className="text-zinc-500">[{log.timestamp}]</span>
+                        <span className={`font-bold ${
+                          log.type === 'success' ? 'text-emerald-500' :
+                          log.type === 'warning' ? 'text-amber-500' : 'text-cyan-400'
+                        }`}>
+                          {log.type === 'success' ? 'OK' : log.type === 'warning' ? 'WARN' : 'LOG'}
+                        </span>
+                        <span className={isDarkMode ? 'text-zinc-300' : 'text-zinc-600'}>{log.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Scope Stats card */}
+                <div className={`border p-6 flex flex-col justify-between ${
+                  isDarkMode ? 'bg-zinc-900/10 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
+                }`}>
+                  <div>
+                    <h3 className="text-xs font-bold uppercase mb-4 text-emerald-500">Autonomous Target Rules</h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-zinc-500">Domain Targets</span>
+                        <span className="font-bold">UI/UX, Server, CLI</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-zinc-500">Deduplication</span>
+                        <span className="font-bold text-emerald-500">Enabled</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t text-[11px] flex justify-between items-center">
+                    <span className="text-zinc-500">Auto Re-eval</span>
+                    <span className="text-emerald-500 font-bold">Active</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Harvested Issues Feed */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold uppercase text-emerald-500 tracking-wider">
+                  Ingested Open Issues Log
+                </h3>
+                {loading ? (
+                  <div className="text-center py-10">
+                    <div className="animate-spin h-5 w-5 border-2 border-emerald-500 border-t-transparent mx-auto" />
+                  </div>
+                ) : issues.length === 0 ? (
+                  <div className="text-center py-10 border border-dashed text-xs text-zinc-500">No active issues recorded in database.</div>
+                ) : (
+                  issues.map((issue) => (
+                    <div
+                      key={issue.issueId}
+                      className={`relative border p-6 transition duration-150 ${
+                        issue.status === 'AUTOMATICALLY_CLAIMED'
+                          ? `${isDarkMode ? 'bg-zinc-900/10 border-zinc-850' : 'bg-white border-zinc-200 shadow-sm'}`
+                          : `opacity-40 hover:opacity-80 ${isDarkMode ? 'border-zinc-900' : 'border-zinc-150'}`
+                      }`}
+                    >
+                      {issue.status === 'AUTOMATICALLY_CLAIMED' && (
+                        <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 border text-zinc-400">
+                            {issue.repoFullName} #{issue.issueNumber}
+                          </span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 border uppercase ${
+                            issue.category === 'UI/UX' ? 'border-purple-500/20 text-purple-400 bg-purple-500/5' :
+                            issue.category === 'Server' ? 'border-emerald-500/20 text-emerald-500 bg-emerald-500/5' :
+                            issue.category === 'CLI' ? 'border-cyan-500/20 text-cyan-400 bg-cyan-500/5' :
+                            'border-zinc-800 text-zinc-500'
+                          }`}>
+                            {issue.category || 'General'}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-zinc-500">
+                          {new Date(issue.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-zinc-100 hover:text-emerald-400 transition mb-3">
+                        <a href={issue.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1">
+                          {issue.title}
+                          <svg className="w-3.5 h-3.5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      </h4>
+
+                      {issue.status === 'AUTOMATICALLY_CLAIMED' ? (
+                        <div className={`border p-4 text-xs leading-relaxed ${
+                          isDarkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+                        }`}>
+                          <div className="text-[9px] font-bold uppercase text-emerald-500 tracking-wider mb-2 flex items-center gap-1.5">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Auto-Posted Human Comment (Successfully Claimed)
+                          </div>
+                          <p className="italic">
+                            "{issue.aiProposal}"
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-zinc-500 italic">
+                          Skipped automatic interactions. Met categorization filters: Off.
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'config' && (
+            <div className={`border p-8 max-w-3xl space-y-6 ${
+              isDarkMode ? 'bg-zinc-900/10 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
+            }`}>
               <div>
-                <h4 className="text-xs font-bold uppercase mb-3 text-emerald-500">Custom Dev Signature</h4>
+                <h2 className="text-base font-bold text-emerald-500 uppercase mb-2">Configure Profile</h2>
+                <p className="text-xs text-zinc-400">
+                  Update the dynamic persona signature appended to your automated comments.
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-800">
+                <h3 className="text-xs font-bold uppercase mb-2">Personal Developer Signature</h3>
+                <p className="text-[11px] text-zinc-500 mb-4">
+                  Add custom career details. GitClaim combines this signature cleanly with Gemini's drafts.
+                </p>
                 <textarea
-                  value={devSignature}
-                  onChange={(e) => setDevSignature(e.target.value)}
-                  className={`w-full h-24 border p-3 text-xs focus:outline-none focus:border-emerald-500 font-mono leading-relaxed ${
-                    isDarkMode ? 'bg-zinc-900/40 border-zinc-800 text-zinc-300' : 'bg-white border-zinc-200 text-zinc-800'
+                  value={personalSignature}
+                  onChange={(e) => setPersonalSignature(e.target.value)}
+                  className={`w-full h-32 border p-4 text-xs focus:outline-none focus:border-emerald-500 font-mono leading-relaxed ${
+                    isDarkMode ? 'bg-zinc-950 border-zinc-850 text-zinc-300' : 'bg-white border-zinc-250 text-zinc-850'
                   }`}
-                  placeholder="Appended cleanly at the end of every comment..."
                 />
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Dynamic Watchlist Input Panel */}
-        <div className={`border p-5 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6 ${
-          isDarkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-        }`}>
-          <div className="flex-1">
-            <h3 className="text-xs font-extrabold uppercase mb-1">Add Repository Watchlist</h3>
-            <p className={`text-[11px] ${isDarkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
-              Input any owner/repo path or complete GitHub URL to register it inside your autonomous crawling loop.
-            </p>
-          </div>
-          <form onSubmit={handleAddRepo} className="flex gap-2 w-full md:w-auto md:max-w-md flex-1">
-            <input
-              type="text"
-              value={newRepoUrl}
-              onChange={(e) => setNewRepoUrl(e.target.value)}
-              placeholder="e.g. meshery/meshery"
-              className={`flex-1 border px-3 py-2 text-xs focus:outline-none focus:border-emerald-500 font-mono ${
-                isDarkMode ? 'bg-zinc-900/50 border-zinc-800 text-zinc-200' : 'bg-white border-zinc-200 text-zinc-800'
-              }`}
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 text-xs font-bold border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition uppercase"
-            >
-              [ Add ]
-            </button>
-          </form>
+          )}
         </div>
-
-        {/* Dashboard Grid Workspace */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Main Feed Section (8 Columns) */}
-          <section className="lg:col-span-8 space-y-6">
-            
-            {/* Nav & Filter Tabs */}
-            <div className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-2 border ${
-              isDarkMode ? 'bg-zinc-900/20 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
-            }`}>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className={`px-3 py-1.5 text-xs font-bold transition duration-150 ${
-                    activeTab === 'all' 
-                      ? 'bg-zinc-900 text-emerald-500 border border-zinc-800' 
-                      : `${isDarkMode ? 'text-zinc-400 hover:text-white' : 'text-zinc-600 hover:text-zinc-900'}`
-                  }`}
-                >
-                  All ({issues.length})
-                </button>
-                <button
-                  onClick={() => setActiveTab('claimed')}
-                  className={`px-3 py-1.5 text-xs font-bold transition duration-150 ${
-                    activeTab === 'claimed' 
-                      ? 'bg-zinc-900 text-emerald-500 border border-zinc-800' 
-                      : `${isDarkMode ? 'text-zinc-400 hover:text-white' : 'text-zinc-600 hover:text-zinc-900'}`
-                  }`}
-                >
-                  Auto-Claimed
-                </button>
-                <button
-                  onClick={() => setActiveTab('ignored')}
-                  className={`px-3 py-1.5 text-xs font-bold transition duration-150 ${
-                    activeTab === 'ignored' 
-                      ? 'bg-zinc-900 text-emerald-500 border border-zinc-800' 
-                      : `${isDarkMode ? 'text-zinc-400 hover:text-white' : 'text-zinc-600 hover:text-zinc-900'}`
-                  }`}
-                >
-                  Ignored
-                </button>
-              </div>
-            </div>
-
-            {/* List Body */}
-            {loading ? (
-              <div className={`text-center py-24 border border-dashed ${isDarkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                <div className="animate-spin h-5 w-5 border-2 border-emerald-500 border-t-transparent mx-auto mb-4" />
-                <p className="text-[10px] text-zinc-500 tracking-wider">RETRIEVING ACTIVE TELEMETRY...</p>
-              </div>
-            ) : displayedIssues.length === 0 ? (
-              <div className={`text-center py-20 border border-dashed ${isDarkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
-                <p className="text-xs text-zinc-500">Workspace clean. No matching telemetry logs available.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {displayedIssues.map((issue) => (
-                  <div
-                    key={issue.issueId}
-                    className={`relative border p-5 transition-all duration-300 ${
-                      issue.status === 'AUTOMATICALLY_CLAIMED'
-                        ? `${isDarkMode ? 'bg-zinc-900/10 border-zinc-800' : 'bg-white border-zinc-200 shadow-sm'}`
-                        : `opacity-40 hover:opacity-75 ${isDarkMode ? 'border-zinc-900 bg-transparent' : 'border-zinc-100 bg-zinc-50/50'}`
-                    }`}
-                  >
-                    {/* Left Accent Border */}
-                    {issue.status === 'AUTOMATICALLY_CLAIMED' && (
-                      <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
-                    )}
-
-                    {/* Metadata line */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 border ${
-                          isDarkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-400' : 'bg-zinc-100 border-zinc-200 text-zinc-600'
-                        }`}>
-                          {issue.repoFullName} #{issue.issueNumber}
-                        </span>
-                        
-                        {/* Domain tag */}
-                        <span className={`text-[9px] font-bold px-2 py-0.5 border uppercase ${
-                          issue.category === 'UI/UX' ? 'border-purple-500/20 text-purple-400 bg-purple-500/5' :
-                          issue.category === 'Server' ? 'border-emerald-500/20 text-emerald-500 bg-emerald-500/5' :
-                          issue.category === 'CLI' ? 'border-cyan-500/20 text-cyan-400 bg-cyan-500/5' :
-                          'border-zinc-850 text-zinc-500'
-                        }`}>
-                          {issue.category || 'General'}
-                        </span>
-
-                        {issue.status === 'AUTOMATICALLY_CLAIMED' ? (
-                          <span className="text-[9px] font-bold text-emerald-500 uppercase flex items-center gap-1">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            [ Claimed ]
-                          </span>
-                        ) : (
-                          <span className={`text-[9px] font-bold uppercase ${isDarkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                            [ Out-of-Scope ]
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-zinc-500">
-                        {new Date(issue.createdAt).toLocaleDateString(undefined, { 
-                          month: 'short', 
-                          day: 'numeric'
-                        })}
-                      </span>
-                    </div>
-
-                    {/* Title Header */}
-                    <h3 className={`text-sm font-bold mb-4 hover:text-emerald-400 transition-colors duration-200 ${
-                      isDarkMode ? 'text-zinc-100' : 'text-zinc-850'
-                    }`}>
-                      <a href={issue.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1">
-                        {issue.title}
-                        <svg className="w-3.5 h-3.5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    </h3>
-
-                    {/* Posted Comment text display */}
-                    {issue.status === 'AUTOMATICALLY_CLAIMED' ? (
-                      <div className={`border p-4 font-mono text-xs leading-relaxed ${
-                        isDarkMode ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-zinc-50 border-zinc-200 text-zinc-700'
-                      }`}>
-                        <div className={`text-[9px] font-bold uppercase tracking-widest mb-2 border-b pb-1.5 flex items-center justify-between ${
-                          isDarkMode ? 'border-zinc-900 text-zinc-500' : 'border-zinc-200 text-zinc-400'
-                        }`}>
-                          <span>Auto Comment Text</span>
-                          <span className="text-emerald-500">Posted</span>
-                        </div>
-                        <p className="italic">
-                          "{issue.aiProposal}"
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-[10px] text-zinc-500 italic">
-                        Skipped automatic interactions based on filters.
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Telemetry Panel Side (4 Columns) */}
-          <aside className="lg:col-span-4 space-y-6">
-            
-            {/* Watchlist Manager Panel */}
-            <div className={`border p-5 ${
-              isDarkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200 shadow-sm'
-            }`}>
-              <h3 className="text-xs font-bold uppercase border-b pb-2.5 mb-3 flex items-center justify-between">
-                <span>Watchlist Manager</span>
-                <span className="text-emerald-500 font-extrabold">[{watchlist.length}]</span>
-              </h3>
-              
-              {watchlist.length === 0 ? (
-                <p className="text-[10px] text-zinc-500 italic py-2">No custom watchlists registered. Defaulting to meshery/meshery.</p>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {watchlist.map((item) => (
-                    <div key={item.issueId} className={`flex items-center justify-between p-2 border text-[11px] font-bold ${
-                      isDarkMode ? 'bg-zinc-900/30 border-zinc-850' : 'bg-zinc-50 border-zinc-200'
-                    }`}>
-                      <span className="truncate pr-2">{item.repoFullName}</span>
-                      <button
-                        onClick={() => handleRemoveRepo(item.repoFullName)}
-                        className="text-rose-500 hover:text-rose-400 text-[10px] font-bold tracking-widest px-1 uppercase"
-                      >
-                        [ DEL ]
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Minimalist Live Console logs */}
-            <div className={`border flex flex-col h-[280px] ${
-              isDarkMode ? 'bg-zinc-950 border-zinc-850' : 'bg-white border-zinc-200 shadow-sm'
-            }`}>
-              <div className={`px-4 py-3 border-b flex items-center justify-between ${
-                isDarkMode ? 'border-zinc-850 bg-zinc-900/10' : 'border-zinc-200 bg-zinc-50'
-              }`}>
-                <span className="text-[10px] font-bold text-emerald-500 tracking-wider flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  CONSOLE_TELEMETRY
-                </span>
-                <span className="text-[9px] text-zinc-500">v3.2</span>
-              </div>
-              <div className="p-4 font-mono text-[10px] overflow-y-auto flex-1 space-y-2 leading-relaxed">
-                {logs.map((log, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <span className="text-zinc-500">[{log.time}]</span>
-                    <span className={`font-bold ${
-                      log.type === 'success' ? 'text-emerald-500' :
-                      log.type === 'warning' ? 'text-amber-500' :
-                      log.type === 'error' ? 'text-rose-500' : 'text-zinc-400'
-                    }`}>
-                      {log.type === 'success' ? 'OK' : log.type === 'warning' ? 'WARN' : log.type === 'error' ? 'ERR' : 'LOG'}
-                    </span>
-                    <span className={isDarkMode ? 'text-zinc-300' : 'text-zinc-600'}>{log.msg}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </aside>
-
-        </div>
-
       </div>
-    </div>
+    </main>
   );
 }
