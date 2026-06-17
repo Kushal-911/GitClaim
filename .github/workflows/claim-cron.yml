@@ -1,0 +1,21 @@
+name: GitClaim Autonomous Cloud Worker
+
+on:
+  schedule:
+    # Trigger the worker every 5 minutes (standard Cron syntax)
+    # Note: GitHub scheduled actions can sometimes be delayed slightly depending on GitHub's internal queue load,
+    # but they will run continuously 24/7 without requiring your computer to remain open.
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allows you to manually trigger the run from the Actions tab on GitHub for testing
+
+jobs:
+  ping-harvest-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Ingestion Sweep to Vercel Production
+        run: |
+          echo "Initiating autonomous target sweep against live Next.js endpoint..."
+          curl -X POST https://git-claim-2svu.vercel.app/api/poll-issues \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: GitClaim-GitHub-Cloud-Worker"
+          echo "Autonomous cycle successfully completed."
