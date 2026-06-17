@@ -3,6 +3,10 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { GoogleGenAI } from '@google/genai';
 
+// FORCE VERCEL TO EXCLUDE THIS ROUTE FROM ALL STATIC CACHING PATHS
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const ddbClient = new DynamoDBClient({ region: process.env.AWS_REGION });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
 
@@ -18,9 +22,8 @@ export async function POST() {
       .filter(item => item.status === 'WATCHLIST_ITEM')
       .map(item => item.repoFullName);
 
-    // Default target fallback if watchlist manager is empty
     if (activeTargets.length === 0) {
-      activeTargets = ['Kushal-911/macro-sentry-AI'];
+      activeTargets = ['meshery/meshery'];
     }
 
     const crawlerSummary = [];
@@ -34,7 +37,8 @@ export async function POST() {
           'Accept': 'application/vnd.github.v3+json',
           'User-Agent': 'GitClaim-Autonomous-Agent'
         },
-        next: { revalidate: 0 }
+        // Completely bypasses Next.js internal data caches
+        cache: 'no-store'
       });
 
       if (!ghResponse.ok) {
@@ -49,16 +53,17 @@ export async function POST() {
         const issueId = String(issue.id);
         const title = issue.title;
 
+        // Deduplication & Self-Healing Check
         const checkExisting = await docClient.send(new GetCommand({
           TableName: TABLE_NAME,
           Key: { issueId }
         }));
 
-        // SELF-HEALING: Only skip if we have already successfully posted a live claim comment.
         if (checkExisting.Item && checkExisting.Item.status === 'AUTOMATICALLY_CLAIMED') {
           continue;
         }
 
+        // --- STEP 1: HYBRID HEURISTIC CLASSIFIER ---
         const upperTitle = title.toUpperCase();
         let finalCategory = 'Other';
         let isGoodMatch = false;
@@ -86,15 +91,23 @@ export async function POST() {
           heuristicApplied = true;
         }
 
+        // --- STEP 2: AI TAILORED PROPOSAL GENERATION ---
         const prompt = `You are a professional software engineer looking to contribute to an open-source project.
         Analyze the following GitHub issue title and perform the tasks:
 
         Issue Title: "${title}"
         
         Task 1: Classify this issue title into exactly one of these categories: "UI/UX", "Server", "CLI", "Security", "Documentation", or "Other".
+        - "UI/UX" for frontend changes, CSS, React, UI elements, layouts, or state hooks.
+        - "Server" for backend changes, databases, API schemas, validation, backend architecture, Go, or Python.
+        - "CLI" for command-line tools (e.g. mesheryctl, flags, config commands).
+        - "Security" for authorization, credentials, leaks.
+        - "Documentation" for markdown files, guides, tutorials.
+
         Task 2: Determine if this is a good match for your skills. Set "isGoodMatch" to true ONLY if the category is "UI/UX", "Server", or "CLI". Otherwise set it to false.
+
         Task 3: Draft a brief, professional, and genuinely human-sounding 2-sentence comment offering to resolve this issue.
-        - DO NOT use generic robotic phrases.
+        - DO NOT use generic robotic phrases (e.g., "Hello, I am a bot", "GitClaim here").
         - Make it sound like a passionate human contributor who understands the problem. Refer to specific files or components mentioned in the title.
         - Ask politely to be assigned to the task.`;
 
@@ -128,13 +141,11 @@ export async function POST() {
           console.error(`Gemini SDK processing failed for issue: ${issueId}. Falling back to heuristic defaults.`, aiError);
         }
 
-        // Blend Heuristics with AI: If heuristics successfully matched, lock them in.
         if (heuristicApplied) {
           aiAnalysis.category = finalCategory;
           aiAnalysis.isGoodMatch = isGoodMatch;
         }
 
-        // Default proposal fallback
         if (!aiAnalysis.proposal) {
           aiAnalysis.proposal = `Hi team! I noticed this issue regarding the ${aiAnalysis.category} category. I am highly interested in working on this and would love to help resolve it.`;
         }
