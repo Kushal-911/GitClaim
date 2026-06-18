@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GitClaim
 
-## Getting Started
+GitClaim is a tool designed to help developers find and claim open-source issues automatically. It monitors a watchlist of repositories, analyzes new issues using an LLM to see if they match your technical stack, and automatically posts a tailored proposal comment to claim the task before it gets taken.
 
-First, run the development server:
+---
 
+## The Problem
+Finding meaningful open-source issues to work on is time-consuming. 
+* High-quality "good first issues" in popular repositories are usually claimed within minutes of being opened.
+* Developers waste hours scrolling through backlogs and reading vague descriptions, only to find the issue does not match their skillset.
+* Project maintainers lose momentum when critical bugs or UI fixes sit unassigned because the right contributors haven't seen them.
+
+---
+
+## The Solution
+GitClaim acts as a background worker that automates the discovery and assignment process.
+
+1. **Repository Tracking:** The system listens to a specific watchlist of open-source projects for any new issue events.
+2. **AI Evaluation:** Issues are ingested, parsed by category (like UI/UX, Documentation, or Server), and evaluated for compatibility against your skills to return a true/false match score.
+3. **Automated Claiming:** For high-confidence matches, the system generates a professional, context-aware contribution proposal and uses the GitHub API to post it directly as an issue comment.
+4. **Management Dashboard:** A clean Next.js web interface displays live sync logs and categorizes issues by status (Pending Review, Ignored Domain, or Automatically Claimed).
+
+---
+
+## Tech Stack
+* **Framework:** Next.js (App Router), TypeScript
+* **Styling:** Tailwind CSS (with native dark mode configuration)
+* **Database:** AWS DynamoDB
+* **API Clients:** Octokit / GitHub REST API
+
+---
+
+## Setup and Installation
+
+### 1. Clone the Repository and Install Dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+git clone [https://github.com/Kushal-911/gitclaim.git](https://github.com/Kushal-911/gitclaim.git)
+cd gitclaim
+npm install
