@@ -19,3 +19,8 @@ jobs:
             -H "Content-Type: application/json" \
             -H "User-Agent: GitClaim-GitHub-Cloud-Worker"
           echo "Autonomous cycle successfully completed."
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write # Required if claiming PR-based issues
